@@ -2,7 +2,6 @@ package com.ivanovrb.mapperannotationprocessor
 
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
-import com.ivanovrb.mapperannotationprocessor.data.Car
 
 class MainActivity : AppCompatActivity() {
 

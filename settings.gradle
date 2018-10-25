@@ -1,1 +1,1 @@
-include ':app', ':mapper', ':mapperCompiler'
+include ':app', ':mapper', ':mapperCompiler', ':data', ':domain'
