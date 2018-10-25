@@ -1,6 +1,6 @@
 package com.ivanovrb.mapper
 
-@Retention(AnnotationRetention.SOURCE)
+@Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.PROPERTY_GETTER,
         AnnotationTarget.PROPERTY_SETTER,
         AnnotationTarget.FIELD,

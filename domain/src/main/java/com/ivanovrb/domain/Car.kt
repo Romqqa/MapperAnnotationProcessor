@@ -1,22 +1,16 @@
-package com.ivanovrb.mapperannotationprocessor.data
+package com.ivanovrb.domain
 
+import com.ivanovrb.domain.User
 import com.ivanovrb.mapper.IgnoreMap
 import com.ivanovrb.mapper.Mapper
 import com.ivanovrb.mapper.MappingName
 import org.jetbrains.annotations.NotNull
 
 data class Car(
-        val id:Int,
+        val id:Int = 0,
         val name:String,
         val mark:Int,
         val model:String,
+        val user: User,
         @IgnoreMap val isMain:Boolean = true
-)
-
-//@Mapper(Car::class)
-data class CarDto(
-        val mark:Int,
-        @MappingName("name") val namedto:String,
-        val model:String,
-        val id:Int
 )

@@ -5,8 +5,6 @@ import com.ivanovrb.mapper.Mapper
 import com.ivanovrb.mapper.MappingName
 import com.squareup.kotlinpoet.*
 import java.io.File
-import java.lang.IllegalArgumentException
-import java.lang.StringBuilder
 import javax.annotation.processing.AbstractProcessor
 import javax.annotation.processing.RoundEnvironment
 import javax.lang.model.SourceVersion
@@ -17,10 +15,12 @@ import javax.lang.model.util.ElementFilter
 class MapperProcessor : AbstractProcessor() {
 
     companion object {
-        val KAPT_KOTLIN_GENERATED_OPTION = "kapt.kotlin.generated"
+        const val KAPT_KOTLIN_GENERATED_OPTION = "kapt.kotlin.generated"
     }
 
+    private val graphDependencies = hashMapOf<String, String>()
     private val primaryData = hashMapOf<Element, Element>()
+    private val packagesAnnotatedClasses = hashSetOf<String>()
 
     override fun getSupportedSourceVersion(): SourceVersion = SourceVersion.latestSupported()
 
@@ -28,97 +28,164 @@ class MapperProcessor : AbstractProcessor() {
 
     override fun process(set: MutableSet<out TypeElement>?, roundEnvironment: RoundEnvironment?): Boolean {
         val annotatedClasses = roundEnvironment?.getElementsAnnotatedWith(Mapper::class.java)
+
         annotatedClasses?.forEach { element ->
             if (element.kind != ElementKind.CLASS) throw Throwable("Mapper annotation apply only class")
 
             val targetClass = element.annotationMirrors.firstOrNull()?.elementValues?.entries?.first()?.value?.value as DeclaredType
-
-            val constructorParameters = mutableListOf<VariableElement>()
-            constructorParameters.addAll(ElementFilter.constructorsIn(element.enclosedElements).first().parameters)
-
+            packagesAnnotatedClasses.add(ClassName.bestGuess(element.asType().asTypeName().toString()).packageName)
+            graphDependencies[element.asType().asTypeName().toString()] = targetClass.asElement().asType().asTypeName().toString()
+            graphDependencies[targetClass.asElement().asType().asTypeName().toString()] = element.asType().asTypeName().toString()
             primaryData[element] = targetClass.asElement()
         }
-
         generateClass()
+
         return true
     }
 
     private fun generateClass() {
-        val file = FileSpec.builder("", "Mapper")
-                .addType(buildClass())
-                .build()
+        val fileBuilder = FileSpec.builder("com.ivanovrb.mapper", "MapperExtensions")
+        primaryData.forEach {
+            fileBuilder
+                    .addFunction(buildFunctions(it.key, it.value))
+            fileBuilder
+                    .addFunction(buildFunctions(it.value, it.key))
+        }
 
         val options = processingEnv.options
         val kotlinGenerated = options[KAPT_KOTLIN_GENERATED_OPTION]
         val mapperFile = File(kotlinGenerated, "mapper")
 
         mapperFile.mkdir()
-
-        file.writeTo(mapperFile)
-    }
-
-    private fun buildClass(): TypeSpec {
-        val mapperClassBuilder = TypeSpec.objectBuilder("Mapper")
-
-        primaryData.forEach {
-            mapperClassBuilder
-                    .addFunction(buildFunctions(it.key, it.value))
-            mapperClassBuilder
-                    .addFunction(buildFunctions(it.value, it.key))
-        }
-
-        return mapperClassBuilder.build()
+        fileBuilder.build().writeTo(mapperFile)
     }
 
     private fun buildFunctions(primaryElement: Element, targetElement: Element): FunSpec {
-        val primaryFieldsMap = getConstructorFields(primaryElement)
-        val targetFieldsMap = getConstructorFields(targetElement)
+        val primaryFieldsMap = getConstructorFields(primaryElement, targetElement)
+        val targetFieldsMap = getConstructorFields(targetElement, primaryElement)
 
-        if (primaryFieldsMap.values.toString() != targetFieldsMap.values.toString()) throw IllegalArgumentException("${primaryElement.simpleName} fields (${primaryFieldsMap.values}) and ${targetElement.simpleName} fields (${targetFieldsMap.values}) are different")
+        if (primaryFieldsMap.values.map { it.first }.toHashSet() != targetFieldsMap.values.map { it.first }.toHashSet())
+            throw IllegalArgumentException("${primaryElement.simpleName} fields (${primaryFieldsMap.values.map { it.first }}) and ${targetElement.simpleName} fields (${targetFieldsMap.values.map { it.first }}) are different")
 
         val parametersStringBuilder = StringBuilder()
-
-        val primaryFieldsNamesList = primaryFieldsMap.keys.toList()
-        val targetFieldsNamesList = targetFieldsMap.keys.toList()
-        targetFieldsNamesList.forEachIndexed { index, s ->
-
+        targetFieldsMap.forEach { targetEntry ->
             parametersStringBuilder
                     .append("\t")
-                    .append(s)
+                    .append(targetEntry.key)
                     .append(" = ")
-                    .append(primaryFieldsNamesList[index])
+                    .append(primaryFieldsMap.entries.find { it.value.first == targetEntry.value.first }?.run { this.value.second })
                     .append(",\n")
         }
 
-        return FunSpec.builder("map${primaryElement.simpleName}To${targetElement.simpleName}")
-                .addParameter(primaryElement.simpleName.toString().decapitalize(), primaryElement.asType().asTypeName())
+        return FunSpec.builder(buildFunctionName(targetElement.simpleName.toString()))
+                .receiver(primaryElement.asType().asTypeName())
                 .returns(targetElement.asType().asTypeName())
-                .addStatement("with(${primaryElement.simpleName.toString().decapitalize()}){\nreturn ${targetElement.simpleName}(\n${parametersStringBuilder.dropLast(2)}\n)}")
+                .addStatement("return ${targetElement.simpleName}(\n${parametersStringBuilder.dropLast(2)}\n)")
                 .build()
 
     }
 
-    private fun getConstructorFields(element: Element): Map<String, String> {
-        val resultMap = hashMapOf<String, String>()
-        val constructors = ElementFilter.constructorsIn(element.enclosedElements)
-                .filter { it.enclosedElements.size == 0 }
+    private fun getConstructorFields(primaryElement: Element, targetElement: Element): Map<String, Pair<String, String?>> {
+        return if (packagesAnnotatedClasses.contains(ClassName.bestGuess(primaryElement.asType().asTypeName().toString()).packageName))
+            getConstructorFieldsFromClassInPackage(primaryElement, targetElement)
+        else
+            getConstructorFieldsFromClassOutPackage(primaryElement, targetElement)
+    }
 
-        if (constructors.size > 1) throw IllegalArgumentException("${element.simpleName} has more then one constructors")
+    private fun getConstructorFieldsFromClassInPackage(element: Element, targetElement: Element): Map<String, Pair<String, String?>> {
+        val resultMap = hashMapOf<String, Pair<String, String?>>()
+        val constructors = getConstructorFromElement(element)
 
-        constructors.first().run {
+        constructors.run {
             parameters.forEach { variable ->
-                if (variable.getAnnotation(IgnoreMap::class.java) != null) return@forEach
-
-                val mappingNameAnnotation = variable.getAnnotation(IgnoreMap::class.java)
-                if (mappingNameAnnotation != null) {
-                    resultMap[variable.simpleName.toString()] = mappingNameAnnotation.value
+                if (variable.getAnnotation(IgnoreMap::class.java) != null) {
                     return@forEach
-                } else
-                    resultMap[variable.simpleName.toString()] = variable.simpleName.toString()
+                }
 
+                resultMap.putAll(extractValues(variable, targetElement))
+            }
+        }
+        return resultMap
+    }
+//    private fun extractValues(variable: VariableElement, targetElement: Element): Map<out String, Pair<String, String?>>{
+//
+//    }
+
+
+    private fun extractValues(variable: VariableElement, targetElement: Element): Map<out String, Pair<String, String?>> {
+        val resultMap = hashMapOf<String, Pair<String, String?>>()
+
+        val mappingNameAnnotation = variable.getAnnotation(MappingName::class.java)
+        if (mappingNameAnnotation != null) {
+            resultMap[variable.simpleName.toString()] = mappingNameAnnotation.value to variable.simpleName.toString()
+        } else {
+            resultMap[variable.simpleName.toString()] = variable.simpleName.toString() to variable.simpleName.toString()
+        }
+
+        val typeVariable = variable.asType()
+        val targetType = getConstructorParametersFromElement(targetElement)[variable.simpleName.toString()]
+        val isSameType = typeVariable.toString() == targetType.toString()
+
+        if (!MapperUtils.isPrimitive(typeVariable.asTypeName().toString()) && !isSameType) {
+            val typeVariableAsElement = (typeVariable as DeclaredType).asElement()
+            val mapperType = graphDependencies[typeVariableAsElement.asType().asTypeName().toString()]
+                    ?: throw IllegalArgumentException("Class $typeVariable has not mapper method")
+            resultMap[variable.simpleName.toString()] = resultMap[variable.simpleName.toString()]!!.first to "${variable.simpleName}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+        }
+
+        return resultMap
+    }
+
+    private fun getConstructorFieldsFromClassOutPackage(element: Element, targetElement: Element): Map<String, Pair<String, String?>> {
+        val resultMap = hashMapOf<String, Pair<String, String?>>()
+
+        val classElement = Class.forName(element.asType().asTypeName().toString()).kotlin
+        val constructorParameters = ElementFilter.constructorsIn(element.enclosedElements)
+                .first { it.enclosedElements.size == 0 }
+                .parameters
+
+        classElement.constructors.first().parameters.forEachIndexed { index, parameter ->
+
+            if (constructorParameters[index].getAnnotation(IgnoreMap::class.java) != null) return@forEachIndexed
+
+            val mappingNameAnnotation = constructorParameters[index].getAnnotation(MappingName::class.java)
+            if (mappingNameAnnotation != null) {
+                resultMap[parameter.name!!] = mappingNameAnnotation.value to parameter.name!!
+            } else {
+                resultMap[parameter.name!!] = parameter.name!! to parameter.name!!
+            }
+
+            val typeVariable = parameter.type.asTypeName().toString()
+
+            val targetType = getConstructorParametersFromElement(targetElement)[parameter.name!!]
+            val isSameType = typeVariable == targetType.toString()
+
+            if (!MapperUtils.isPrimitive(typeVariable) && !isSameType) {
+                val mapperType = graphDependencies[typeVariable]
+                        ?: throw IllegalArgumentException("Class $typeVariable have not mapper method")
+                resultMap[parameter.name!!] = resultMap[parameter.name!!]!!.first to "${parameter.name!!}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
             }
         }
 
         return resultMap
+    }
+
+    private fun getConstructorParametersFromElement(element: Element): Map<String, String> {
+        return if (packagesAnnotatedClasses.contains(ClassName.bestGuess(element.asType().asTypeName().toString()).packageName)) {
+            getConstructorFromElement(element).run { mapOf(this.simpleName.toString() to this.asType().toString()) }
+        } else {
+            Class.forName(element.asType().asTypeName().toString()).kotlin.constructors.first().parameters.map { it.name!! to it.type.toString() }.toMap()
+        }
+
+    }
+
+
+    private fun getConstructorFromElement(element: Element): ExecutableElement {
+        return ElementFilter.constructorsIn(element.enclosedElements)
+                .first { it.enclosedElements.size == 0 }
+    }
+
+    private fun buildFunctionName(to: String): String {
+        return "mapTo$to"
     }
 }
