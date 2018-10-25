@@ -44,29 +44,20 @@ class MapperProcessor : AbstractProcessor() {
     }
 
     private fun generateClass() {
-        val file = FileSpec.builder("com.ivanovrb.mapper", "MapperExtensions")
-                .addType(buildClass())
-                .build()
+        val fileBuilder = FileSpec.builder("com.ivanovrb.mapper", "MapperExtensions")
+        primaryData.forEach {
+            fileBuilder
+                    .addFunction(buildFunctions(it.key, it.value))
+            fileBuilder
+                    .addFunction(buildFunctions(it.value, it.key))
+        }
 
         val options = processingEnv.options
         val kotlinGenerated = options[KAPT_KOTLIN_GENERATED_OPTION]
         val mapperFile = File(kotlinGenerated, "mapper")
 
         mapperFile.mkdir()
-        file.writeTo(mapperFile)
-    }
-
-    private fun buildClass(): TypeSpec {
-        val mapperClassBuilder = TypeSpec.objectBuilder("Mapper")
-
-        primaryData.forEach {
-            mapperClassBuilder
-                    .addFunction(buildFunctions(it.key, it.value))
-            mapperClassBuilder
-                    .addFunction(buildFunctions(it.value, it.key))
-        }
-
-        return mapperClassBuilder.build()
+        fileBuilder.build().writeTo(mapperFile)
     }
 
     private fun buildFunctions(primaryElement: Element, targetElement: Element): FunSpec {
@@ -86,10 +77,10 @@ class MapperProcessor : AbstractProcessor() {
                     .append(",\n")
         }
 
-        return FunSpec.builder(buildFunctionName(primaryElement.simpleName.toString(), targetElement.simpleName.toString()))
-                .addParameter(primaryElement.simpleName.toString().decapitalize(), primaryElement.asType().asTypeName())
+        return FunSpec.builder(buildFunctionName(targetElement.simpleName.toString()))
+                .receiver(primaryElement.asType().asTypeName())
                 .returns(targetElement.asType().asTypeName())
-                .addStatement("with(${primaryElement.simpleName.toString().decapitalize()}){\nreturn ${targetElement.simpleName}(\n${parametersStringBuilder.dropLast(2)}\n)}")
+                .addStatement("return ${targetElement.simpleName}(\n${parametersStringBuilder.dropLast(2)}\n)")
                 .build()
 
     }
@@ -139,7 +130,7 @@ class MapperProcessor : AbstractProcessor() {
             val typeVariableAsElement = (typeVariable as DeclaredType).asElement()
             val mapperType = graphDependencies[typeVariableAsElement.asType().asTypeName().toString()]
                     ?: throw IllegalArgumentException("Class $typeVariable has not mapper method")
-            resultMap[variable.simpleName.toString()] = resultMap[variable.simpleName.toString()]!!.first to "map${typeVariableAsElement.simpleName}To${ClassName.bestGuess(mapperType).simpleName}(${variable.simpleName})"
+            resultMap[variable.simpleName.toString()] = resultMap[variable.simpleName.toString()]!!.first to "${variable.simpleName}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
         }
 
         return resultMap
@@ -172,7 +163,7 @@ class MapperProcessor : AbstractProcessor() {
             if (!MapperUtils.isPrimitive(typeVariable) && !isSameType) {
                 val mapperType = graphDependencies[typeVariable]
                         ?: throw IllegalArgumentException("Class $typeVariable have not mapper method")
-                resultMap[parameter.name!!] = resultMap[parameter.name!!]!!.first to "map${ClassName.bestGuess(typeVariable).simpleName}To${ClassName.bestGuess(mapperType).simpleName}(${parameter.name!!})"
+                resultMap[parameter.name!!] = resultMap[parameter.name!!]!!.first to "${parameter.name!!}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
             }
         }
 
@@ -194,11 +185,7 @@ class MapperProcessor : AbstractProcessor() {
                 .first { it.enclosedElements.size == 0 }
     }
 
-    private fun buildFunctionName(from: String, to: String): String {
-        return "map${from}To$to"
+    private fun buildFunctionName(to: String): String {
+        return "mapTo$to"
     }
-
-//    private fun buildFunctionName(from: String, to: String): String {
-//        return "map${from}To$to"
-//    }
 }
