@@ -7,7 +7,7 @@ data class Cat(
         val name:String
 )
 
-@Mapper(Cat::class)
+//@Mapper(Cat::class)
 data class CatDto(
         val name:String
 )

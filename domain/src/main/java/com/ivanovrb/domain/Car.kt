@@ -9,8 +9,8 @@ import org.jetbrains.annotations.NotNull
 data class Car(
         val id:Int = 0,
         val name:String,
-        val mark:Int,
+        val mark:Float,
         val model:String,
-        val user: User,
+        val user: User?,
         @IgnoreMap val isMain:Boolean = true
 )

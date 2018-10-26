@@ -1,9 +1,14 @@
 package com.ivanovrb.mappercompiler
 
+import com.ivanovrb.mapper.Default
 import com.ivanovrb.mapper.IgnoreMap
 import com.ivanovrb.mapper.Mapper
 import com.ivanovrb.mapper.MappingName
-import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.FileSpec
+import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.asTypeName
+import org.jetbrains.annotations.Nullable
 import java.io.File
 import javax.annotation.processing.AbstractProcessor
 import javax.annotation.processing.RoundEnvironment
@@ -11,6 +16,7 @@ import javax.lang.model.SourceVersion
 import javax.lang.model.element.*
 import javax.lang.model.type.DeclaredType
 import javax.lang.model.util.ElementFilter
+import javax.tools.Diagnostic
 
 class MapperProcessor : AbstractProcessor() {
 
@@ -30,9 +36,13 @@ class MapperProcessor : AbstractProcessor() {
         val annotatedClasses = roundEnvironment?.getElementsAnnotatedWith(Mapper::class.java)
 
         annotatedClasses?.forEach { element ->
-            if (element.kind != ElementKind.CLASS) throw Throwable("Mapper annotation apply only class")
+            if (element.kind != ElementKind.CLASS) {
+                processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "Mapper annotation apply only class")
+                return false
+            }
+            val target = element.annotationMirrors.firstOrNull()?.elementValues?.entries?.first()?.value?.value
 
-            val targetClass = element.annotationMirrors.firstOrNull()?.elementValues?.entries?.first()?.value?.value as DeclaredType
+            val targetClass = target as DeclaredType
             packagesAnnotatedClasses.add(ClassName.bestGuess(element.asType().asTypeName().toString()).packageName)
             graphDependencies[element.asType().asTypeName().toString()] = targetClass.asElement().asType().asTypeName().toString()
             graphDependencies[targetClass.asElement().asType().asTypeName().toString()] = element.asType().asTypeName().toString()
@@ -63,20 +73,20 @@ class MapperProcessor : AbstractProcessor() {
     private fun buildFunctions(primaryElement: Element, targetElement: Element): FunSpec {
         val primaryFieldsMap = getConstructorFields(primaryElement, targetElement)
         val targetFieldsMap = getConstructorFields(targetElement, primaryElement)
-
-        if (primaryFieldsMap.values.map { it.first }.toHashSet() != targetFieldsMap.values.map { it.first }.toHashSet())
-            throw IllegalArgumentException("${primaryElement.simpleName} fields (${primaryFieldsMap.values.map { it.first }}) and ${targetElement.simpleName} fields (${targetFieldsMap.values.map { it.first }}) are different")
-
         val parametersStringBuilder = StringBuilder()
-        targetFieldsMap.forEach { targetEntry ->
-            parametersStringBuilder
-                    .append("\t")
-                    .append(targetEntry.key)
-                    .append(" = ")
-                    .append(primaryFieldsMap.entries.find { it.value.first == targetEntry.value.first }?.run { this.value.second })
-                    .append(",\n")
-        }
 
+        if (primaryFieldsMap.values.map { it.first }.toHashSet() != targetFieldsMap.values.map { it.first }.toHashSet()) {
+            processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "${primaryElement.simpleName} fields (${primaryFieldsMap.values.map { it.first }}) and ${targetElement.simpleName} fields (${targetFieldsMap.values.map { it.first }}) are different")
+        } else {
+            targetFieldsMap.forEach { targetEntry ->
+                parametersStringBuilder
+                        .append("\t")
+                        .append(targetEntry.key)
+                        .append(" = ")
+                        .append(primaryFieldsMap.entries.find { it.value.first == targetEntry.value.first }?.run { this.value.second })
+                        .append(",\n")
+            }
+        }
         return FunSpec.builder(buildFunctionName(targetElement.simpleName.toString()))
                 .receiver(primaryElement.asType().asTypeName())
                 .returns(targetElement.asType().asTypeName())
@@ -107,10 +117,6 @@ class MapperProcessor : AbstractProcessor() {
         }
         return resultMap
     }
-//    private fun extractValues(variable: VariableElement, targetElement: Element): Map<out String, Pair<String, String?>>{
-//
-//    }
-
 
     private fun extractValues(variable: VariableElement, targetElement: Element): Map<out String, Pair<String, String?>> {
         val resultMap = hashMapOf<String, Pair<String, String?>>()
@@ -129,8 +135,34 @@ class MapperProcessor : AbstractProcessor() {
         if (!MapperUtils.isPrimitive(typeVariable.asTypeName().toString()) && !isSameType) {
             val typeVariableAsElement = (typeVariable as DeclaredType).asElement()
             val mapperType = graphDependencies[typeVariableAsElement.asType().asTypeName().toString()]
-                    ?: throw IllegalArgumentException("Class $typeVariable has not mapper method")
-            resultMap[variable.simpleName.toString()] = resultMap[variable.simpleName.toString()]!!.first to "${variable.simpleName}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+
+            if (mapperType == null) {
+                processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "Class $typeVariable has not mapper method ")
+            } else {
+                val statement = if (variable.getAnnotation(Nullable::class.java) == null) {
+                    "${variable.simpleName}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+                } else {
+                    val defaultAnnotation = variable.getAnnotation(Default::class.java)
+                    "(${variable.simpleName} ?: ${defaultAnnotation?.value ?: typeVariable.asTypeName().toString() +"()"}).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+
+                }
+                resultMap[variable.simpleName.toString()] = resultMap[variable.simpleName.toString()]!!.first to statement
+            }
+        }
+
+        if (MapperUtils.isPrimitive(typeVariable.asTypeName().toString()) && variable.getAnnotation(Nullable::class.java) != null) {
+            val defValueAnnotation = variable.getAnnotation(Default::class.java)
+
+            val defValue = if (defValueAnnotation == null) {
+                MapperUtils.getDefValue(typeVariable.asTypeName().toString()).toString()
+            } else {
+                 if (typeVariable.toString() == String::class.java.canonicalName)
+                    "\"${defValueAnnotation.value}\""
+                else
+                    defValueAnnotation.value
+            }
+
+            resultMap[variable.simpleName.toString()] = resultMap[variable.simpleName.toString()]!!.first to "${resultMap[variable.simpleName.toString()]!!.second} ?: $defValue"
         }
 
         return resultMap
@@ -162,8 +194,35 @@ class MapperProcessor : AbstractProcessor() {
 
             if (!MapperUtils.isPrimitive(typeVariable) && !isSameType) {
                 val mapperType = graphDependencies[typeVariable]
-                        ?: throw IllegalArgumentException("Class $typeVariable have not mapper method")
-                resultMap[parameter.name!!] = resultMap[parameter.name!!]!!.first to "${parameter.name!!}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+                if (mapperType == null) {
+                    processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "Class $typeVariable has not mapper method")
+                } else {
+
+                    val statement = if (constructorParameters[index].getAnnotation(Nullable::class.java) == null) {
+                        "${parameter.name!!}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+                    } else {
+                        val defaultAnnotation = constructorParameters[index].getAnnotation(Default::class.java)
+                        "(${parameter.name!!} ?: ${defaultAnnotation?.value ?: "$typeVariable()"}).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+
+                    }
+                    resultMap[parameter.name!!] = resultMap[parameter.name!!]!!.first to statement
+                }
+            }
+
+
+            if (MapperUtils.isPrimitive(typeVariable) && constructorParameters[index].getAnnotation(Nullable::class.java) != null) {
+                val defValueAnnotation = constructorParameters[index].getAnnotation(Default::class.java)
+
+                if (defValueAnnotation == null) {
+                    processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "For ${parameter.name!!} not found default value. Add default value as private val _${parameter.name!!} = defaultValue in class ${classElement.simpleName}")
+                } else {
+                    val defValue = if (typeVariable == String::class.java.canonicalName)
+                        "\"${defValueAnnotation.value}\""
+                    else
+                        defValueAnnotation.value
+
+                    resultMap[parameter.name!!.toString()] = resultMap[parameter.name!!.toString()]!!.first to "${resultMap[parameter.name!!.toString()]!!.second} ?: $defValue"
+                }
             }
         }
 

@@ -2,25 +2,32 @@ package com.ivanovrb.mappercompiler
 
 object MapperUtils{
 
-    private val wrapperTypesKotlin = setOf(
-            Boolean::class.qualifiedName!!,
-            Char::class.qualifiedName!!,
-            Int::class.qualifiedName!!,
-            Double::class.qualifiedName!!,
-            Float::class.qualifiedName!!,
-            Byte::class.qualifiedName!!,
-            String::class.qualifiedName!!
+    private val wrapperTypesKotlin = mapOf(
+            Boolean::class.qualifiedName!! to false,
+            Char::class.qualifiedName!! to "",
+            Int::class.qualifiedName!! to 0,
+            Double::class.qualifiedName!! to 0.0,
+            Float::class.qualifiedName!! to 0f,
+            Byte::class.qualifiedName!! to 0,
+            String::class.qualifiedName!! to "\"\""
     )
-    private val wrapperTypesJava = setOf(
-            Boolean::class.java.canonicalName!!,
-            Char::class.java.canonicalName!!,
-            Int::class.java.canonicalName!!,
-            Double::class.java.canonicalName!!,
-            Float::class.java.canonicalName!!,
-            Byte::class.java.canonicalName!!,
-            String::class.java.canonicalName!!
+    private val wrapperTypesJava = mapOf(
+            Boolean::class.java.canonicalName!! to false,
+            Char::class.java.canonicalName!! to "",
+            Int::class.java.canonicalName!! to 0,
+            Double::class.java.canonicalName!! to 0.0,
+            Float::class.java.canonicalName!! to 0f,
+            Byte::class.java.canonicalName!! to 0,
+            String::class.java.canonicalName!! to "\"\"",
+            "java.lang.Integer" to 0,
+            "java.lang.Float" to 0f,
+            "java.lang.Double" to 0.0
     )
     fun isPrimitive(value:String):Boolean{
-        return wrapperTypesKotlin.contains(value) || wrapperTypesJava.contains(value)
+        return wrapperTypesKotlin[value] != null || wrapperTypesJava[value] != null
+    }
+
+    fun getDefValue(type:String):Any?{
+        return if (wrapperTypesKotlin[type] != null) wrapperTypesKotlin[type] else if(wrapperTypesJava[type] != null) wrapperTypesJava[type] else null
     }
 }
