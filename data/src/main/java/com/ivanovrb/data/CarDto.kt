@@ -15,6 +15,6 @@ data class CarDto(
         val model:String = "ves",
         val id:Int = 1,
 //        @Default("UserMap(null, 3)")
-        @MappingName("user")val userdto: UserMap?
+        @MappingName("user")val userdto: UserMap
 ){
 }

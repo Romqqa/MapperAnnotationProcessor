@@ -4,6 +4,8 @@ import com.ivanovrb.mapper.Default
 import com.ivanovrb.mapper.IgnoreMap
 import com.ivanovrb.mapper.Mapper
 import com.ivanovrb.mapper.MappingName
+import com.ivanovrb.mappercompiler.factory.ExtractorConstructorFieldsFromClassInPackage
+import com.ivanovrb.mappercompiler.factory.ExtractorConstructorFieldsFromClassOutPackage
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
@@ -96,152 +98,13 @@ class MapperProcessor : AbstractProcessor() {
     }
 
     private fun getConstructorFields(primaryElement: Element, targetElement: Element): Map<String, Pair<String, String?>> {
-        return if (packagesAnnotatedClasses.contains(ClassName.bestGuess(primaryElement.asType().asTypeName().toString()).packageName))
-            getConstructorFieldsFromClassInPackage(primaryElement, targetElement)
-        else
-            getConstructorFieldsFromClassOutPackage(primaryElement, targetElement)
-    }
 
-    private fun getConstructorFieldsFromClassInPackage(element: Element, targetElement: Element): Map<String, Pair<String, String?>> {
-        val resultMap = hashMapOf<String, Pair<String, String?>>()
-        val constructors = getConstructorFromElement(element)
-
-        constructors.run {
-            parameters.forEach { variable ->
-                if (variable.getAnnotation(IgnoreMap::class.java) != null) {
-                    return@forEach
-                }
-
-                resultMap.putAll(extractValues(variable, targetElement))
-            }
-        }
-        return resultMap
-    }
-
-    private fun extractValues(variable: VariableElement, targetElement: Element): Map<out String, Pair<String, String?>> {
-        val resultMap = hashMapOf<String, Pair<String, String?>>()
-
-        val mappingNameAnnotation = variable.getAnnotation(MappingName::class.java)
-        if (mappingNameAnnotation != null) {
-            resultMap[variable.simpleName.toString()] = mappingNameAnnotation.value to variable.simpleName.toString()
+        processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, "packagesAnnotatedClasses ${packagesAnnotatedClasses.toString()}\n classname ${primaryElement.simpleName} \n Classpackage ${ClassName.bestGuess(primaryElement.asType().asTypeName().toString()).packageName}")
+        return if (packagesAnnotatedClasses.contains(ClassName.bestGuess(primaryElement.asType().asTypeName().toString()).packageName)){
+            ExtractorConstructorFieldsFromClassInPackage(graphDependencies,processingEnv).extract(primaryElement, targetElement)
         } else {
-            resultMap[variable.simpleName.toString()] = variable.simpleName.toString() to variable.simpleName.toString()
+            ExtractorConstructorFieldsFromClassOutPackage(graphDependencies,processingEnv).extract(primaryElement, targetElement)
         }
-
-        val typeVariable = variable.asType()
-        val targetType = getConstructorParametersFromElement(targetElement)[variable.simpleName.toString()]
-        val isSameType = typeVariable.toString() == targetType.toString()
-
-        if (!MapperUtils.isPrimitive(typeVariable.asTypeName().toString()) && !isSameType) {
-            val typeVariableAsElement = (typeVariable as DeclaredType).asElement()
-            val mapperType = graphDependencies[typeVariableAsElement.asType().asTypeName().toString()]
-
-            if (mapperType == null) {
-                processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "Class $typeVariable has not mapper method ")
-            } else {
-                val statement = if (variable.getAnnotation(Nullable::class.java) == null) {
-                    "${variable.simpleName}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
-                } else {
-                    val defaultAnnotation = variable.getAnnotation(Default::class.java)
-                    "(${variable.simpleName} ?: ${defaultAnnotation?.value ?: typeVariable.asTypeName().toString() +"()"}).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
-
-                }
-                resultMap[variable.simpleName.toString()] = resultMap[variable.simpleName.toString()]!!.first to statement
-            }
-        }
-
-        if (MapperUtils.isPrimitive(typeVariable.asTypeName().toString()) && variable.getAnnotation(Nullable::class.java) != null) {
-            val defValueAnnotation = variable.getAnnotation(Default::class.java)
-
-            val defValue = if (defValueAnnotation == null) {
-                MapperUtils.getDefValue(typeVariable.asTypeName().toString()).toString()
-            } else {
-                 if (typeVariable.toString() == String::class.java.canonicalName)
-                    "\"${defValueAnnotation.value}\""
-                else
-                    defValueAnnotation.value
-            }
-
-            resultMap[variable.simpleName.toString()] = resultMap[variable.simpleName.toString()]!!.first to "${resultMap[variable.simpleName.toString()]!!.second} ?: $defValue"
-        }
-
-        return resultMap
-    }
-
-    private fun getConstructorFieldsFromClassOutPackage(element: Element, targetElement: Element): Map<String, Pair<String, String?>> {
-        val resultMap = hashMapOf<String, Pair<String, String?>>()
-
-        val classElement = Class.forName(element.asType().asTypeName().toString()).kotlin
-        val constructorParameters = ElementFilter.constructorsIn(element.enclosedElements)
-                .first { it.enclosedElements.size == 0 }
-                .parameters
-
-        classElement.constructors.first().parameters.forEachIndexed { index, parameter ->
-
-            if (constructorParameters[index].getAnnotation(IgnoreMap::class.java) != null) return@forEachIndexed
-
-            val mappingNameAnnotation = constructorParameters[index].getAnnotation(MappingName::class.java)
-            if (mappingNameAnnotation != null) {
-                resultMap[parameter.name!!] = mappingNameAnnotation.value to parameter.name!!
-            } else {
-                resultMap[parameter.name!!] = parameter.name!! to parameter.name!!
-            }
-
-            val typeVariable = parameter.type.asTypeName().toString()
-
-            val targetType = getConstructorParametersFromElement(targetElement)[parameter.name!!]
-            val isSameType = typeVariable == targetType.toString()
-
-            if (!MapperUtils.isPrimitive(typeVariable) && !isSameType) {
-                val mapperType = graphDependencies[typeVariable]
-                if (mapperType == null) {
-                    processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "Class $typeVariable has not mapper method")
-                } else {
-
-                    val statement = if (constructorParameters[index].getAnnotation(Nullable::class.java) == null) {
-                        "${parameter.name!!}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
-                    } else {
-                        val defaultAnnotation = constructorParameters[index].getAnnotation(Default::class.java)
-                        "(${parameter.name!!} ?: ${defaultAnnotation?.value ?: "$typeVariable()"}).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
-
-                    }
-                    resultMap[parameter.name!!] = resultMap[parameter.name!!]!!.first to statement
-                }
-            }
-
-
-            if (MapperUtils.isPrimitive(typeVariable) && constructorParameters[index].getAnnotation(Nullable::class.java) != null) {
-                val defValueAnnotation = constructorParameters[index].getAnnotation(Default::class.java)
-
-                if (defValueAnnotation == null) {
-                    processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "For ${parameter.name!!} not found default value. Add default value as private val _${parameter.name!!} = defaultValue in class ${classElement.simpleName}")
-                } else {
-                    val defValue = if (typeVariable == String::class.java.canonicalName)
-                        "\"${defValueAnnotation.value}\""
-                    else
-                        defValueAnnotation.value
-
-                    resultMap[parameter.name!!.toString()] = resultMap[parameter.name!!.toString()]!!.first to "${resultMap[parameter.name!!.toString()]!!.second} ?: $defValue"
-                }
-            }
-        }
-
-        return resultMap
-    }
-
-    private fun getConstructorParametersFromElement(element: Element): Map<String, String> {
-        return if (packagesAnnotatedClasses.contains(ClassName.bestGuess(element.asType().asTypeName().toString()).packageName)) {
-            getConstructorFromElement(element).run { mapOf(this.simpleName.toString() to this.asType().toString()) }
-        } else {
-            Class.forName(element.asType().asTypeName().toString()).kotlin.constructors.first().parameters.map { it.name!! to it.type.toString() }.toMap()
-        }
-
-    }
-
-
-    private fun getConstructorFromElement(element: Element): ExecutableElement {
-        return ElementFilter.constructorsIn(element.enclosedElements)
-                .first { it.enclosedElements.size == 0 }
     }
 
     private fun buildFunctionName(to: String): String {

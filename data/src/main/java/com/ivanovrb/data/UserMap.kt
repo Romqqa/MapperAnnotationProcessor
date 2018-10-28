@@ -10,4 +10,5 @@ import com.ivanovrb.mapper.MappingName
 class UserMap(
         val name: String? = "asder",
         @MappingName("ids")val id: Int? = 0
+
 )
