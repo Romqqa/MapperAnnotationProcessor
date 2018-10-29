@@ -39,7 +39,7 @@ abstract class ExtractorConstructorFields(
     }
 
     protected lateinit var primaryElement: Element
-    protected lateinit var targetElement: Element
+    private lateinit var targetElement: Element
 
     fun extract(primaryElement: Element, targetElement: Element): Map<String, Pair<String, String?>> {
         val resultMap = hashMapOf<String, Pair<String, String?>>()
@@ -74,7 +74,6 @@ abstract class ExtractorConstructorFields(
                 resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to generateStatementForNotPrimaryField(variable, mapperType)
             }
         }
-//        processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, "${primaryElement.simpleName} ${typeVariable.asNonNullable()} ${variable.getAnnotation(Nullable::class.java) != null} ${targetType} ${targetType?.nullable}")
 
         if (typeVariable.isPrimitive() && variable.getAnnotation(Nullable::class.java) != null && targetType?.nullable == false) {
             val defValueAnnotation = variable.getAnnotation(Default::class.java)
