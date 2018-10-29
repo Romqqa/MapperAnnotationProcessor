@@ -8,7 +8,7 @@ import com.ivanovrb.mapper.MappingName
 
 @Mapper(User::class)
 class UserMap(
-        val name: String? = "asder",
-        @MappingName("ids")val id: Int? = 0
-
+        @MappingName("ids") val id: Int? = 1,
+        val name: String = "vswer",
+        @IgnoreMap val ignore :Int = 123
 )

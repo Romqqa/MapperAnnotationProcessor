@@ -1,6 +1,5 @@
 package com.ivanovrb.mappercompiler
 
-import com.ivanovrb.mapper.Default
 import com.ivanovrb.mapper.IgnoreMap
 import com.ivanovrb.mapper.Mapper
 import com.ivanovrb.mapper.MappingName
@@ -10,14 +9,14 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.asTypeName
-import org.jetbrains.annotations.Nullable
 import java.io.File
 import javax.annotation.processing.AbstractProcessor
 import javax.annotation.processing.RoundEnvironment
 import javax.lang.model.SourceVersion
-import javax.lang.model.element.*
+import javax.lang.model.element.Element
+import javax.lang.model.element.ElementKind
+import javax.lang.model.element.TypeElement
 import javax.lang.model.type.DeclaredType
-import javax.lang.model.util.ElementFilter
 import javax.tools.Diagnostic
 
 class MapperProcessor : AbstractProcessor() {
@@ -98,8 +97,7 @@ class MapperProcessor : AbstractProcessor() {
     }
 
     private fun getConstructorFields(primaryElement: Element, targetElement: Element): Map<String, Pair<String, String?>> {
-
-        processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, "packagesAnnotatedClasses ${packagesAnnotatedClasses.toString()}\n classname ${primaryElement.simpleName} \n Classpackage ${ClassName.bestGuess(primaryElement.asType().asTypeName().toString()).packageName}")
+        processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, "${primaryElement.simpleName} ${targetElement.simpleName}")
         return if (packagesAnnotatedClasses.contains(ClassName.bestGuess(primaryElement.asType().asTypeName().toString()).packageName)){
             ExtractorConstructorFieldsFromClassInPackage(graphDependencies,processingEnv).extract(primaryElement, targetElement)
         } else {

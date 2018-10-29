@@ -10,6 +10,5 @@ data class Cat(
 
 @Mapper(Cat::class)
 data class CatDto(
-        @Default("asdf" +
-                "")val name:String?
+        val name:String = "asd"
 )
