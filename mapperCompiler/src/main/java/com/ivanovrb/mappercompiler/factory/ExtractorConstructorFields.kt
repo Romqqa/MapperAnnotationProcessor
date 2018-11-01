@@ -4,9 +4,11 @@ import com.ivanovrb.mapper.Default
 import com.ivanovrb.mapper.IgnoreMap
 import com.ivanovrb.mapper.MappingName
 import com.ivanovrb.mappercompiler.MapperUtils
+import com.ivanovrb.mappercompiler.getStubCollection
 import com.ivanovrb.mappercompiler.isPrimitive
 import com.ivanovrb.mappercompiler.resolver.ConstructorConflictResolver
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asTypeName
 import org.jetbrains.annotations.Nullable
@@ -21,13 +23,13 @@ abstract class ExtractorConstructorFields(
 
     abstract val primaryConstructor: Constructor
 
-     private val targetConstructor: Constructor by lazy {
-             val constructors = getConstructorsFromElement(targetElement)
-              if (constructors.size == 1)
-                  constructors.first()
-             else
-                 resolveConstructorsConflict(constructors)
-         }
+    private val targetConstructor: Constructor by lazy {
+        val constructors = getConstructorsFromElement(targetElement)
+        if (constructors.size == 1)
+            constructors.first()
+        else
+            resolveConstructorsConflict(constructors)
+    }
 
     private fun getTargetTypeOfVariable(variable: Parameter): TypeName? {
         return targetConstructor.parameters.findLast {
@@ -65,13 +67,21 @@ abstract class ExtractorConstructorFields(
         val targetType = getTargetTypeOfVariable(variable)
         val isSameType = typeVariable.asNonNullable().toString() == targetType?.asNonNullable().toString()
 
-        if (!typeVariable.isPrimitive() && !isSameType) {
-            val mapperType = graphDependencies[typeVariable.asNonNullable().toString()]
+        if (!typeVariable.isPrimitive()) {
+            if (!isSameType) {
+                val mapperType = graphDependencies[typeVariable.asNonNullable().toString()]
 
-            if (mapperType == null) {
-                processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "Class $typeVariable has not mapper method ")
+                if (mapperType == null) {
+                    val statement = generateStatementForUnknownTypeClass(variable)
+                    resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to statement
+                } else {
+                    resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to generateStatementForNotPrimaryField(variable, mapperType)
+                }
             } else {
-                resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to generateStatementForNotPrimaryField(variable, mapperType)
+                if (typeVariable.nullable && targetType?.nullable == false) {
+                    val statement = generateStatementForUnknownTypeClass(variable)
+                    resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to statement
+                }
             }
         }
 
@@ -93,13 +103,20 @@ abstract class ExtractorConstructorFields(
         return resultMap
     }
 
+    private fun generateStatementForUnknownTypeClass(variable: Parameter): String? {
+        if (variable.typeName is ParameterizedTypeName) {
+            processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, variable.typeName.typeArguments.map { it.nullable }.toString())
+        }
+        return "${variable.simpleName} ?: ${ variable.typeName.getStubCollection()?: variable.typeName.asNonNullable()}()"
+    }
+
     private fun generateStatementForNotPrimaryField(variable: Parameter, mapperType: String): String? {
         return if (variable.getAnnotation(Nullable::class.java) == null) {
             "${variable.simpleName}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
         } else {
             val defaultAnnotation = variable.getAnnotation(Default::class.java)
             "(${variable.simpleName} ?: ${defaultAnnotation?.value
-                    ?: variable.typeName.asNonNullable().toString() +"()"}).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+                    ?: variable.typeName.asNonNullable().toString()}()).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
         }
     }
 
@@ -127,7 +144,7 @@ abstract class ExtractorConstructorFields(
                                     .filter { it.getAnnotation(IgnoreMap::class.java) == null }
                                     .map {
                                         val isNullable = it.getAnnotation(Nullable::class.java) != null
-                                       Parameter(it.simpleName.toString(), if (isNullable) it.asType().asTypeName().asNullable() else it.asType().asTypeName(), it.annotationMirrors)
+                                        Parameter(it.simpleName.toString(), if (isNullable) it.asType().asTypeName().asNullable() else it.asType().asTypeName(), it.annotationMirrors)
                                     }
                                     .toList(),
                             executableElement.annotationMirrors)
