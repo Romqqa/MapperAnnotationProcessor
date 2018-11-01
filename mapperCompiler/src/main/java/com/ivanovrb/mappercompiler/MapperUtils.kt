@@ -1,5 +1,6 @@
 package com.ivanovrb.mappercompiler
 
+import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asTypeName
 import com.sun.org.apache.xpath.internal.operations.Bool
@@ -32,6 +33,14 @@ private val wrapperTypesJavaToKotlin = mapOf(
         java.lang.String::class.java.canonicalName!! to String::class.asTypeName()
 )
 
+private val collections:Map<String, String> by lazy {
+    mapOf(
+            List::class.java.canonicalName to "listOf()",
+            Map::class.java.canonicalName to "mapOf()",
+            Set::class.java.canonicalName to "setOf()"
+    )
+}
+
 object MapperUtils {
 
     fun isPrimitive(value: String): Boolean {
@@ -40,6 +49,13 @@ object MapperUtils {
 
     fun getDefValue(type: String): Any? {
         return if (wrapperTypesKotlin[type] != null) wrapperTypesKotlin[type] else if (wrapperTypesJava[type] != null) wrapperTypesJava[type] else null
+    }
+    fun asKotlinPrimitive(type:String): String? {
+        return when {
+            wrapperTypesKotlin[type] != null -> return type
+            wrapperTypesJava[type] != null -> return wrapperTypesJavaToKotlin[type]!!.canonicalName
+            else -> null
+        }
     }
 }
 
@@ -53,4 +69,13 @@ fun TypeName.asKotlinPrimitive(): TypeName? {
         wrapperTypesJava[this.asNonNullable().toString()] != null -> return wrapperTypesJavaToKotlin[this.asNonNullable().toString()]!!
         else -> null
     }
+}
+
+fun TypeName.getStubCollection():String?{
+    val  collection = collections[this.asNonNullable().toString().substringBefore("<")]
+    if (collection != null && this is ParameterizedTypeName) {
+        val types = this.typeArguments.map { it.asKotlinPrimitive() ?: it }.toString()
+        return collection.replace("()","<${types.substring(1, types.length - 1)}>")
+    }
+    return collection
 }

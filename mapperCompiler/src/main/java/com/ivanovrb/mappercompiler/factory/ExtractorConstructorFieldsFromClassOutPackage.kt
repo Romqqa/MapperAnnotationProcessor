@@ -15,8 +15,8 @@ class ExtractorConstructorFieldsFromClassOutPackage(
             val classElement = Class.forName(primaryElement.asType().asTypeName().toString()).kotlin
 
             val constructors = classElement.constructors
-                    .filter { it.parameters[0].type.toString() != "android.os.Parcel" }
                     .filter { it.parameters.isNotEmpty() }
+                    .filter { it.parameters[0].type.toString() != "android.os.Parcel" }
                     .mapIndexed { index, kFunction ->
                         Constructor(
                                 constructorsAsElement[index].parameters.mapIndexed { indexParameter, parameter ->

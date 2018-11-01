@@ -97,7 +97,6 @@ class MapperProcessor : AbstractProcessor() {
     }
 
     private fun getConstructorFields(primaryElement: Element, targetElement: Element): Map<String, Pair<String, String?>> {
-        processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, "${primaryElement.simpleName} ${targetElement.simpleName}")
         return if (packagesAnnotatedClasses.contains(ClassName.bestGuess(primaryElement.asType().asTypeName().toString()).packageName)){
             ExtractorConstructorFieldsFromClassInPackage(graphDependencies,processingEnv).extract(primaryElement, targetElement)
         } else {
