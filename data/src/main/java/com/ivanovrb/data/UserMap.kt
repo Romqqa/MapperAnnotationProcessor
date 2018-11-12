@@ -11,7 +11,7 @@ import java.util.Date
 class UserMap(
         @MappingName("ids") val id: Int? = 1,
         val name: String? = "vswer",
-        val date: Date?,
-        val list:List<String>?,
+        val date: Date? = null,
+        val list:List<String>? = null,
         @IgnoreMap val ignore :Int = 123
 )

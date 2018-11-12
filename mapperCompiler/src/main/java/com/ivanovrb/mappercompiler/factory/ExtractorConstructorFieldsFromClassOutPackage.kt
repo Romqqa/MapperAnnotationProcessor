@@ -3,12 +3,14 @@ package com.ivanovrb.mappercompiler.factory
 import com.squareup.kotlinpoet.asTypeName
 import org.jetbrains.annotations.Nullable
 import javax.annotation.processing.ProcessingEnvironment
+import javax.lang.model.util.Elements
 
 
 class ExtractorConstructorFieldsFromClassOutPackage(
+        private val elementsUtils: Elements,
         graphDependencies: Map<String, String>,
         processingEnv: ProcessingEnvironment
-) : ExtractorConstructorFields(graphDependencies, processingEnv) {
+) : ExtractorConstructorFields(elementsUtils, graphDependencies, processingEnv) {
 
     override val primaryConstructor: Constructor by lazy {
             val constructorsAsElement = getConstructorsFromElement(primaryElement)
@@ -20,7 +22,7 @@ class ExtractorConstructorFieldsFromClassOutPackage(
                     .mapIndexed { index, kFunction ->
                         Constructor(
                                 constructorsAsElement[index].parameters.mapIndexed { indexParameter, parameter ->
-                                    val isNullable = parameter.getAnnotation(Nullable::class.java) != null
+                                    val isNullable = parameter.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null
                                     Parameter(kFunction.parameters[indexParameter].name!!,if (isNullable) parameter.typeName.asNullable() else parameter.typeName, parameter.annotationMirrors, parameter.simpleName)
                                 },
                                 constructorsAsElement[index].annotationMirrors)

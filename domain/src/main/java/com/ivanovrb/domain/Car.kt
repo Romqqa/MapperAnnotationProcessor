@@ -16,6 +16,4 @@ data class Car(
         val model:String,
         val user: User?,
         @IgnoreMap val isMain:Boolean = true
-) : Parcelable {
-
-}
+) : Parcelable

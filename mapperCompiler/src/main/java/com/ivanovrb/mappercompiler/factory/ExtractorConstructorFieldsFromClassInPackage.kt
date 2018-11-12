@@ -1,12 +1,14 @@
 package com.ivanovrb.mappercompiler.factory
 
 import javax.annotation.processing.ProcessingEnvironment
+import javax.lang.model.util.Elements
 
 
 class ExtractorConstructorFieldsFromClassInPackage(
+        private val elementsUtils: Elements,
         graphDependencies: Map<String, String>,
         processingEnv: ProcessingEnvironment
-) : ExtractorConstructorFields(graphDependencies, processingEnv) {
+) : ExtractorConstructorFields(elementsUtils, graphDependencies, processingEnv) {
 
     override val primaryConstructor: Constructor by lazy {
             val constructors = getConstructorsFromElement(primaryElement)
