@@ -9,5 +9,5 @@
 /build
 /captures
 .externalNativeBuild
-/mapper/gradle.build
-/mapperCompiler/gradle.build
+/mapper/build.gradle
+/mapperCompiler/build.gradle
