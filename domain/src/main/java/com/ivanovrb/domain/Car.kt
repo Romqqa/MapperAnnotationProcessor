@@ -16,4 +16,11 @@ data class Car(
         val model:String,
         val user: User?,
         @IgnoreMap val isMain:Boolean = true
-) : Parcelable
+): Parcelable{
+    companion object {
+        const val ASFAEF= 21
+    }
+    private val testVal:String = ""
+    private val testVal2:String = ""
+}
+

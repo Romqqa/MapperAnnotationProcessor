@@ -42,7 +42,7 @@ private val wrapperTypesJavaToKotlin = mapOf(
         java.lang.String::class.java.canonicalName!! to String::class.asTypeName()
 )
 
-private val collections:Map<String, String> by lazy {
+private val collections: Map<String, String> by lazy {
     mapOf(
             List::class.java.canonicalName to "listOf()",
             Map::class.java.canonicalName to "mapOf()",
@@ -59,7 +59,8 @@ object MapperUtils {
     fun getDefValue(type: String): Any? {
         return if (wrapperTypesKotlin[type] != null) wrapperTypesKotlin[type] else if (wrapperTypesJava[type] != null) wrapperTypesJava[type] else null
     }
-    fun asKotlinPrimitive(type:String): String? {
+
+    fun asKotlinPrimitive(type: String): String? {
         return when {
             wrapperTypesKotlin[type] != null -> return type
             wrapperTypesJava[type] != null -> return wrapperTypesJavaToKotlin[type]!!.canonicalName
@@ -68,7 +69,7 @@ object MapperUtils {
     }
 }
 
-fun TypeName.isPrimitive():Boolean{
+fun TypeName.isPrimitive(): Boolean {
     return wrapperTypesKotlin[this.asNonNullable().toString()] != null || wrapperTypesJava[this.asNonNullable().toString()] != null
 }
 
@@ -80,11 +81,18 @@ fun TypeName.asKotlinPrimitive(): TypeName? {
     }
 }
 
-fun TypeName.getStubCollection():String?{
-    val  collection = collections[this.asNonNullable().toString().substringBefore("<")]
+fun TypeName.getStubCollection(): String? {
+    val collection = collections[this.asNonNullable().toString().substringBefore("<")]
     if (collection != null && this is ParameterizedTypeName) {
         val types = this.typeArguments.map { it.asKotlinPrimitive() ?: it }.toString()
-        return collection.replace("()","<${types.substring(1, types.length - 1)}>")
+        return collection.replace("()", "<${types.substring(1, types.length - 1)}>")
     }
     return collection
+}
+
+fun String.append(action: () -> Any): String {
+    return "$this ${action()}"
+}
+fun String.appendLn(action: () -> Any): String {
+    return "$this\n${action().toString()}"
 }

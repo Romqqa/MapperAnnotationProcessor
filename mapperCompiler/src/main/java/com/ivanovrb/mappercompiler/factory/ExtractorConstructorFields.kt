@@ -1,12 +1,8 @@
 package com.ivanovrb.mappercompiler.factory
 
-//import com.ivanovrb.mapper.Default
-//import com.ivanovrb.mapper.IgnoreMap
-//import com.ivanovrb.mapper.MappingName
 import com.ivanovrb.mappercompiler.*
 import com.ivanovrb.mappercompiler.resolver.ConstructorConflictResolver
 import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asTypeName
 import org.jetbrains.annotations.Nullable
@@ -26,10 +22,12 @@ abstract class ExtractorConstructorFields(
 
     private val targetConstructor: Constructor by lazy {
         val constructors = getConstructorsFromElement(targetElement)
+
         if (constructors.size == 1)
             constructors.first()
-        else
-            resolveConstructorsConflict(constructors)
+        else {
+            resolveConstructorsConflict(constructors, targetElement, primaryElement)
+        }
     }
 
     private fun getTargetTypeOfVariable(variable: Parameter): TypeName? {
@@ -51,7 +49,7 @@ abstract class ExtractorConstructorFields(
         this.targetElement = targetElement
 
         primaryConstructor.parameters.forEach { parameter ->
-            parameter.annotationMirrors.forEachIndexed { index, annotationMirror ->
+            parameter.annotationMirrors.forEachIndexed { _, annotationMirror ->
                 if (annotationMirror.annotationType.toString() == IGNORE_MAP_CLASS_NAME){
                     return@forEach
                 }
@@ -162,9 +160,9 @@ abstract class ExtractorConstructorFields(
                 .toList()
     }
 
-    protected fun resolveConstructorsConflict(constructors: List<Constructor>): Constructor {
-        return constructors.first()
-//        return ConstructorConflictResolver(processingEnv, primaryElement).resolve(constructors, getConstructorsFromElement(targetElement))
+    protected fun resolveConstructorsConflict(constructors: List<Constructor>, firstElement: Element = primaryElement, secondElement: Element = targetElement): Constructor {
+//        processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, primaryElement.simpleName.toString().append { targetElement.simpleName })
+        return ConstructorConflictResolver(processingEnv, firstElement).resolve(constructors, getConstructorsFromElement(secondElement))
     }
 }
 
