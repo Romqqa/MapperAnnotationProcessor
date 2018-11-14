@@ -1,15 +1,11 @@
 package com.ivanovrb.mappercompiler
 
-import com.ivanovrb.mapper.IgnoreMap
-import com.ivanovrb.mapper.Mapper
-import com.ivanovrb.mapper.MappingName
 import com.ivanovrb.mappercompiler.factory.ExtractorConstructorFieldsFromClassInPackage
 import com.ivanovrb.mappercompiler.factory.ExtractorConstructorFieldsFromClassOutPackage
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.asTypeName
-import java.io.File
 import javax.annotation.processing.AbstractProcessor
 import javax.annotation.processing.RoundEnvironment
 import javax.lang.model.SourceVersion
@@ -17,31 +13,35 @@ import javax.lang.model.element.Element
 import javax.lang.model.element.ElementKind
 import javax.lang.model.element.TypeElement
 import javax.lang.model.type.DeclaredType
+import javax.lang.model.util.Elements
 import javax.tools.Diagnostic
+import javax.tools.StandardLocation
 
 class MapperProcessor : AbstractProcessor() {
-
-    companion object {
-        const val KAPT_KOTLIN_GENERATED_OPTION = "kapt.kotlin.generated"
-    }
 
     private val graphDependencies = hashMapOf<String, String>()
     private val primaryData = hashMapOf<Element, Element>()
     private val packagesAnnotatedClasses = hashSetOf<String>()
+    private var elementUtils:Elements? = null
 
     override fun getSupportedSourceVersion(): SourceVersion = SourceVersion.latestSupported()
 
-    override fun getSupportedAnnotationTypes(): MutableSet<String> = mutableSetOf(Mapper::class.java.canonicalName, IgnoreMap::class.java.canonicalName, MappingName::class.java.canonicalName)
+    override fun getSupportedAnnotationTypes(): MutableSet<String> = mutableSetOf(MAPPER_CLASS_NAME)
 
     override fun process(set: MutableSet<out TypeElement>?, roundEnvironment: RoundEnvironment?): Boolean {
-        val annotatedClasses = roundEnvironment?.getElementsAnnotatedWith(Mapper::class.java)
+        if (roundEnvironment?.processingOver() == true) return false
+
+        elementUtils = processingEnv.elementUtils
+
+        val annotatedClasses = roundEnvironment?.getElementsAnnotatedWith(elementUtils?.getTypeElement(MAPPER_CLASS_NAME))
 
         annotatedClasses?.forEach { element ->
             if (element.kind != ElementKind.CLASS) {
                 processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "Mapper annotation apply only class")
                 return false
             }
-            val target = element.annotationMirrors.firstOrNull()?.elementValues?.entries?.first()?.value?.value
+
+            val target = element.annotationMirrors.findLast { it.annotationType.toString() == MAPPER_CLASS_NAME}?.elementValues?.entries?.first()?.value?.value
 
             val targetClass = target as DeclaredType
             packagesAnnotatedClasses.add(ClassName.bestGuess(element.asType().asTypeName().toString()).packageName)
@@ -56,6 +56,7 @@ class MapperProcessor : AbstractProcessor() {
 
     private fun generateClass() {
         val fileBuilder = FileSpec.builder("com.ivanovrb.mapper", "MapperExtensions")
+
         primaryData.forEach {
             fileBuilder
                     .addFunction(buildFunctions(it.key, it.value))
@@ -63,12 +64,12 @@ class MapperProcessor : AbstractProcessor() {
                     .addFunction(buildFunctions(it.value, it.key))
         }
 
-        val options = processingEnv.options
-        val kotlinGenerated = options[KAPT_KOTLIN_GENERATED_OPTION]
-        val mapperFile = File(kotlinGenerated, "mapper")
-
-        mapperFile.mkdir()
-        fileBuilder.build().writeTo(mapperFile)
+        try {
+            val writer = processingEnv.filer.createResource(StandardLocation.SOURCE_OUTPUT, fileBuilder.packageName, "MapperExtensions.kt").openWriter()
+            fileBuilder.build().writeTo(writer)
+            writer.close()
+        } catch (e:Exception){
+        }
     }
 
     private fun buildFunctions(primaryElement: Element, targetElement: Element): FunSpec {
@@ -98,9 +99,9 @@ class MapperProcessor : AbstractProcessor() {
 
     private fun getConstructorFields(primaryElement: Element, targetElement: Element): Map<String, Pair<String, String?>> {
         return if (packagesAnnotatedClasses.contains(ClassName.bestGuess(primaryElement.asType().asTypeName().toString()).packageName)){
-            ExtractorConstructorFieldsFromClassInPackage(graphDependencies,processingEnv).extract(primaryElement, targetElement)
+            ExtractorConstructorFieldsFromClassInPackage(elementUtils!!, graphDependencies,processingEnv).extract(primaryElement, targetElement)
         } else {
-            ExtractorConstructorFieldsFromClassOutPackage(graphDependencies,processingEnv).extract(primaryElement, targetElement)
+            ExtractorConstructorFieldsFromClassOutPackage(elementUtils!!, graphDependencies,processingEnv).extract(primaryElement, targetElement)
         }
     }
 

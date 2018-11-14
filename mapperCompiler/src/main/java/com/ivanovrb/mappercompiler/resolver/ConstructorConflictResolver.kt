@@ -1,7 +1,7 @@
 package com.ivanovrb.mappercompiler.resolver
 
-import com.ivanovrb.mapper.MappingConstructor
-import com.ivanovrb.mapper.MappingName
+import com.ivanovrb.mappercompiler.MAPPING_CONTUCTOR_CLASS_NAME
+import com.ivanovrb.mappercompiler.MAPPING_NAME_CLASS_NAME
 import com.ivanovrb.mappercompiler.asKotlinPrimitive
 import com.ivanovrb.mappercompiler.factory.Constructor
 import javax.annotation.processing.ProcessingEnvironment
@@ -23,8 +23,10 @@ class ConstructorConflictResolver(
     }
 
     private fun findAnnotatedConstructor(constructors: List<Constructor>): Constructor? {
-        val annotatedConstructors = constructors.filter { it.getAnnotation(MappingConstructor::class.java) != null }
+        val annotatedConstructors = constructors
+                .filter { it.annotationMirrors.firstOrNull { MAPPING_CONTUCTOR_CLASS_NAME == it.annotationType.toString() } != null }
 
+//        processingEnv.messager.printMessage(Diagnostic.Kind.WARNING,element.simpleName.toString() + " " +  annotatedConstructors.toString())
         if (annotatedConstructors.isNotEmpty()) {
             if (annotatedConstructors.size > 1)
                 processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, "In ${element.simpleName} find more than one annotated constructors. Give first annotated constructor.")
@@ -38,7 +40,11 @@ class ConstructorConflictResolver(
     private fun findSameConstructor(constructors: List<Constructor>, targetConstructors: List<Constructor>): Constructor {
         val targetConstructorMaxParameters = targetConstructors
                 .asSequence()
-                .map { it -> it.parameters.map { (it.getAnnotation(MappingName::class.java)?.value ?: it.simpleName)+it.typeName.asKotlinPrimitive() } }
+                .map { it ->
+                    it.parameters.map {
+                        it.typeName.asKotlinPrimitive()
+                    }
+                }
                 .toHashSet()
 
         val sameSizeConstructors = constructors
@@ -46,7 +52,9 @@ class ConstructorConflictResolver(
                 .sortedBy { it.parameters.size }
                 .filter { constructor ->
                     targetConstructorMaxParameters.find { list ->
-                        list == constructor.parameters.map {(it.getAnnotation(MappingName::class.java)?.value ?: it.simpleName)+it.typeName.asKotlinPrimitive() }
+                        list == constructor.parameters.map {
+                             it.typeName.asKotlinPrimitive()
+                        }
                     } != null
                 }
                 .toList()
@@ -54,8 +62,15 @@ class ConstructorConflictResolver(
         if (sameSizeConstructors.isEmpty()) {
             processingEnv.messager.printMessage(Diagnostic.Kind.ERROR, "In ${element.simpleName} not found constructors for ${targetConstructors.map { constructor ->
                 constructor.parameters.map {
-                    val name = it.getAnnotation(MappingName::class.java)?.value
-                    (name ?: it.simpleName)+it.typeName.asKotlinPrimitive()
+                    val name = it.annotationMirrors
+                            .firstOrNull { MAPPING_NAME_CLASS_NAME == it.annotationType.toString() }
+                            ?.elementValues
+                            ?.filterKeys { "value" == it.simpleName.toString() }
+                            ?.mapValues { it.value.value as kotlin.String }
+                            ?.toList()
+                            ?.firstOrNull()
+                            ?.second
+                    (name ?: it.simpleName) + " " + it.typeName.asKotlinPrimitive()
                 }
             }}")
         } else {

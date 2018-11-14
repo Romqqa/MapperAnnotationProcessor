@@ -15,5 +15,5 @@ data class User(
         val date:Date = Date(),
         val list:List<String> = listOf()
 ) : Parcelable {
-//    @MappingConstructor constructor(ids:Int?, name: String?) : this(ids?:0, name?:"")
+   constructor(ids:Int?, name: String?) : this(ids?:0, name?:"")
 }

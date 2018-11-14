@@ -1,23 +1,20 @@
 package com.ivanovrb.mappercompiler.factory
 
-import com.ivanovrb.mapper.Default
-import com.ivanovrb.mapper.IgnoreMap
-import com.ivanovrb.mapper.MappingName
-import com.ivanovrb.mappercompiler.MapperUtils
-import com.ivanovrb.mappercompiler.getStubCollection
-import com.ivanovrb.mappercompiler.isPrimitive
+import com.ivanovrb.mappercompiler.*
 import com.ivanovrb.mappercompiler.resolver.ConstructorConflictResolver
 import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asTypeName
 import org.jetbrains.annotations.Nullable
 import javax.annotation.processing.ProcessingEnvironment
+import javax.lang.model.element.AnnotationMirror
 import javax.lang.model.element.Element
 import javax.lang.model.util.ElementFilter
+import javax.lang.model.util.Elements
 import javax.tools.Diagnostic
 
 abstract class ExtractorConstructorFields(
+        private val elementsUtils:Elements,
         private val graphDependencies: Map<String, String>,
         private val processingEnv: ProcessingEnvironment) {
 
@@ -25,14 +22,16 @@ abstract class ExtractorConstructorFields(
 
     private val targetConstructor: Constructor by lazy {
         val constructors = getConstructorsFromElement(targetElement)
+
         if (constructors.size == 1)
             constructors.first()
-        else
-            resolveConstructorsConflict(constructors)
+        else {
+            resolveConstructorsConflict(constructors, targetElement, primaryElement)
+        }
     }
 
     private fun getTargetTypeOfVariable(variable: Parameter): TypeName? {
-        return targetConstructor.parameters.findLast {
+        return targetConstructor.parameters.firstOrNull {
             it.argName == variable.simpleName ||
                     it.simpleName == variable.simpleName ||
                     it.simpleName == variable.argName ||
@@ -50,8 +49,10 @@ abstract class ExtractorConstructorFields(
         this.targetElement = targetElement
 
         primaryConstructor.parameters.forEach { parameter ->
-            if (parameter.getAnnotation(IgnoreMap::class.java) != null) {
-                return@forEach
+            parameter.annotationMirrors.forEachIndexed { _, annotationMirror ->
+                if (annotationMirror.annotationType.toString() == IGNORE_MAP_CLASS_NAME){
+                    return@forEach
+                }
             }
 
             resultMap.putAll(extractValues(parameter))
@@ -85,16 +86,23 @@ abstract class ExtractorConstructorFields(
             }
         }
 
-        if (typeVariable.isPrimitive() && variable.getAnnotation(Nullable::class.java) != null && targetType?.nullable == false) {
-            val defValueAnnotation = variable.getAnnotation(Default::class.java)
+        if (typeVariable.isPrimitive() && variable.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null && targetType?.nullable == false) {
+
+            var defValueAnnotation:AnnotationMirror? = null
+            variable.annotationMirrors.forEachIndexed { index, annotationMirror ->
+                if (annotationMirror.annotationType.toString() == DEFAULT_CLASS_NAME){
+                    defValueAnnotation = annotationMirror
+                    return@forEachIndexed
+                }
+            }
 
             val defValue = if (defValueAnnotation == null) {
                 MapperUtils.getDefValue(typeVariable.asNonNullable().toString()).toString()
             } else {
                 if (typeVariable.toString() == String::class.java.canonicalName)
-                    "\"${defValueAnnotation.value}\""
+                    "\"${defValueAnnotation?.elementValues?.filterKeys { "value" == it.simpleName.toString() }?.mapValues { it.value.value as String }}\""
                 else
-                    defValueAnnotation.value
+                    defValueAnnotation?.elementValues?.filterKeys { "value" == it.simpleName.toString() }?.mapValues { it.value.value as String }?.toList()?.firstOrNull()?.second
             }
 
             resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to "${resultMap[variable.simpleName]!!.second} ?: $defValue"
@@ -104,26 +112,24 @@ abstract class ExtractorConstructorFields(
     }
 
     private fun generateStatementForUnknownTypeClass(variable: Parameter): String? {
-        if (variable.typeName is ParameterizedTypeName) {
-            processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, variable.typeName.typeArguments.map { it.nullable }.toString())
-        }
         return "${variable.simpleName} ?: ${ variable.typeName.getStubCollection()?: variable.typeName.asNonNullable()}()"
     }
 
     private fun generateStatementForNotPrimaryField(variable: Parameter, mapperType: String): String? {
-        return if (variable.getAnnotation(Nullable::class.java) == null) {
+        return if (variable.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } == null) {
             "${variable.simpleName}.mapTo${ClassName.bestGuess(mapperType).simpleName}()"
         } else {
-            val defaultAnnotation = variable.getAnnotation(Default::class.java)
-            "(${variable.simpleName} ?: ${defaultAnnotation?.value
+            val defaultAnnotation: AnnotationMirror? = variable.annotationMirrors.firstOrNull { DEFAULT_CLASS_NAME == it.annotationType.toString() }
+
+            "(${variable.simpleName} ?: ${defaultAnnotation?.elementValues?.filterKeys { "value" == it.simpleName.toString() }?.mapValues { it.value.value as kotlin.String }?.toList()?.firstOrNull()?.second
                     ?: variable.typeName.asNonNullable().toString()}()).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
         }
     }
 
     private fun getMappingNameOrDefault(variable: Parameter): Pair<String, String?> {
-        val mappingNameAnnotation = variable.getAnnotation(MappingName::class.java)
+        val mappingNameAnnotation: AnnotationMirror? = variable.annotationMirrors.firstOrNull { MAPPING_NAME_CLASS_NAME == it.annotationType.toString() }
         return if (mappingNameAnnotation != null) {
-            mappingNameAnnotation.value to variable.simpleName
+            mappingNameAnnotation.elementValues?.filterKeys { "value" == it.simpleName.toString() }?.mapValues { it.value.value as kotlin.String }?.toList()?.firstOrNull()?.second.toString() to variable.simpleName
         } else {
             variable.simpleName to variable.simpleName
         }
@@ -141,9 +147,11 @@ abstract class ExtractorConstructorFields(
                     Constructor(
                             executableElement.parameters
                                     .asSequence()
-                                    .filter { it.getAnnotation(IgnoreMap::class.java) == null }
+                                    .filter {
+                                        it.annotationMirrors.firstOrNull { IGNORE_MAP_CLASS_NAME == it.annotationType.toString()} == null
+                                    }
                                     .map {
-                                        val isNullable = it.getAnnotation(Nullable::class.java) != null
+                                        val isNullable = it.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null
                                         Parameter(it.simpleName.toString(), if (isNullable) it.asType().asTypeName().asNullable() else it.asType().asTypeName(), it.annotationMirrors)
                                     }
                                     .toList(),
@@ -152,8 +160,9 @@ abstract class ExtractorConstructorFields(
                 .toList()
     }
 
-    protected fun resolveConstructorsConflict(constructors: List<Constructor>): Constructor {
-        return ConstructorConflictResolver(processingEnv, primaryElement).resolve(constructors, getConstructorsFromElement(targetElement))
+    protected fun resolveConstructorsConflict(constructors: List<Constructor>, firstElement: Element = primaryElement, secondElement: Element = targetElement): Constructor {
+//        processingEnv.messager.printMessage(Diagnostic.Kind.WARNING, primaryElement.simpleName.toString().append { targetElement.simpleName })
+        return ConstructorConflictResolver(processingEnv, firstElement).resolve(constructors, getConstructorsFromElement(secondElement))
     }
 }
 
