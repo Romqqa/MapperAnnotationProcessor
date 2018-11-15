@@ -10,10 +10,9 @@ import java.util.*
 
 @Parcelize
 data class User(
-        val ids: Int = 12,
-        val name: String = "sa",
-        val date:Date = Date(),
+        val id: Int = 12,
+        val name: String = "",
+        val date:Date? = null,
         val list:List<String> = listOf()
 ) : Parcelable {
-   constructor(ids:Int?, name: String?) : this(ids?:0, name?:"")
 }
