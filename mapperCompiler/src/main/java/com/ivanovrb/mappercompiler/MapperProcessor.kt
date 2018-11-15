@@ -55,7 +55,7 @@ class MapperProcessor : AbstractProcessor() {
     }
 
     private fun generateClass() {
-        val fileBuilder = FileSpec.builder("com.ivanovrb.mapper", "MapperExtensions")
+        val fileBuilder = FileSpec.builder(packagesAnnotatedClasses.firstOrNull()?:"com.ivanovrb.mapper", "MapperExtensions")
 
         primaryData.forEach {
             fileBuilder
