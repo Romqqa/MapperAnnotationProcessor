@@ -64,7 +64,7 @@ data class UserDto(
 )
 ```
 ### @MappingConstructor
-If you have more than one constructor, library will choose the most suitable one. Also you can specify the constructor you need with @MappingConstructor annotation
+If you have more than one constructor, library will choose the most suitable one. Also you can specify the constructor you need with **@MappingConstructor** annotation
 ```
 @Mapper(User::class)
 class UserDto(
