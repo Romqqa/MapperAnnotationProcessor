@@ -3,9 +3,11 @@ package com.ivanovrb.mappercompiler.factory
 import com.ivanovrb.mappercompiler.*
 import com.ivanovrb.mappercompiler.resolver.ConstructorConflictResolver
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asTypeName
 import org.jetbrains.annotations.Nullable
+import java.lang.StringBuilder
 import javax.annotation.processing.ProcessingEnvironment
 import javax.lang.model.element.AnnotationMirror
 import javax.lang.model.element.Element
@@ -14,9 +16,10 @@ import javax.lang.model.util.Elements
 import javax.tools.Diagnostic
 
 abstract class ExtractorConstructorFields(
-        private val elementsUtils:Elements,
+        private val elementsUtils: Elements,
         private val graphDependencies: Map<String, String>,
-        private val processingEnv: ProcessingEnvironment) {
+        private val processingEnv: ProcessingEnvironment
+) {
 
     abstract val primaryConstructor: Constructor
 
@@ -50,7 +53,7 @@ abstract class ExtractorConstructorFields(
 
         primaryConstructor.parameters.forEach { parameter ->
             parameter.annotationMirrors.forEachIndexed { _, annotationMirror ->
-                if (annotationMirror.annotationType.toString() == IGNORE_MAP_CLASS_NAME){
+                if (annotationMirror.annotationType.toString() == IGNORE_MAP_CLASS_NAME) {
                     return@forEach
                 }
             }
@@ -71,16 +74,15 @@ abstract class ExtractorConstructorFields(
         if (!typeVariable.isPrimitive()) {
             if (!isSameType) {
                 val mapperType = graphDependencies[typeVariable.asNonNullable().toString()]
-
                 if (mapperType == null) {
-                    val statement = generateStatementForUnknownTypeClass(variable)
+                    val statement = generateStatementForUnknownTypeClass(variable, targetType)
                     resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to statement
                 } else {
                     resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to generateStatementForNotPrimaryField(variable, mapperType)
                 }
             } else {
                 if (typeVariable.nullable && targetType?.nullable == false) {
-                    val statement = generateStatementForUnknownTypeClass(variable)
+                    val statement = generateStatementForUnknownTypeClass(variable, targetType)
                     resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to statement
                 }
             }
@@ -88,9 +90,9 @@ abstract class ExtractorConstructorFields(
 
         if (typeVariable.isPrimitive() && variable.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null && targetType?.nullable == false) {
 
-            var defValueAnnotation:AnnotationMirror? = null
+            var defValueAnnotation: AnnotationMirror? = null
             variable.annotationMirrors.forEachIndexed { index, annotationMirror ->
-                if (annotationMirror.annotationType.toString() == DEFAULT_CLASS_NAME){
+                if (annotationMirror.annotationType.toString() == DEFAULT_CLASS_NAME) {
                     defValueAnnotation = annotationMirror
                     return@forEachIndexed
                 }
@@ -111,8 +113,31 @@ abstract class ExtractorConstructorFields(
         return resultMap
     }
 
-    private fun generateStatementForUnknownTypeClass(variable: Parameter): String? {
-        return "${variable.simpleName} ?: ${ variable.typeName.getStubCollection()?: variable.typeName.asNonNullable()}()"
+    private fun generateStatementForUnknownTypeClass(variable: Parameter, mapperType: TypeName?): String? {
+        var mappingType: TypeName? = mapperType
+        with(variable.typeName) {
+            if (mapperType != null && !mapperType.isCollection()) {
+                mappingType = targetConstructor.parameters[primaryConstructor.parameters.indexOf(variable)].typeName
+            }
+            if (this.isCollection()
+                    && this is ParameterizedTypeName
+                    && mappingType != null
+                    && mappingType?.isCollection() == true
+                    && mappingType is ParameterizedTypeName) {
+                val type = this.typeArguments[0]
+                val targetType = (mappingType as ParameterizedTypeName).typeArguments[0]
+
+                return if (variable.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } == null)
+                    "${variable.simpleName}.map { it.${generateStatementForNotPrimaryField(Parameter(type.toString(), type, listOf()), targetType.toString())?.split('.')?.last()} }"
+                else
+                    "${variable.simpleName}?.map { it.${generateStatementForNotPrimaryField(Parameter(type.toString(), type, listOf()), targetType.toString())?.split('.')?.last()} } ?: ${mappingType?.getStubCollection()
+                            ?: mappingType?.asNonNullable()}()"
+
+            }
+
+        }
+        return "${variable.simpleName} ?: ${variable.typeName.getStubCollection()
+                ?: variable.typeName.asNonNullable()}()"
     }
 
     private fun generateStatementForNotPrimaryField(variable: Parameter, mapperType: String): String? {
@@ -148,7 +173,7 @@ abstract class ExtractorConstructorFields(
                             executableElement.parameters
                                     .asSequence()
                                     .filter {
-                                        it.annotationMirrors.firstOrNull { IGNORE_MAP_CLASS_NAME == it.annotationType.toString()} == null
+                                        it.annotationMirrors.firstOrNull { IGNORE_MAP_CLASS_NAME == it.annotationType.toString() } == null
                                     }
                                     .map {
                                         val isNullable = it.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null

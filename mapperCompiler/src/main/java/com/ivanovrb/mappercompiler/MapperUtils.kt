@@ -72,6 +72,13 @@ object MapperUtils {
 fun TypeName.isPrimitive(): Boolean {
     return wrapperTypesKotlin[this.asNonNullable().toString()] != null || wrapperTypesJava[this.asNonNullable().toString()] != null
 }
+fun TypeName.isCollection(): Boolean {
+    val collection = collections[this.asNonNullable().toString().substringBefore("<")]
+    if(this is ParameterizedTypeName){
+        return collections[this.rawType.canonicalName] != null || collections[this.rawType.canonicalName] != null
+    }
+    return collection?.isNotEmpty() == true
+}
 
 fun TypeName.asKotlinPrimitive(): TypeName? {
     return when {

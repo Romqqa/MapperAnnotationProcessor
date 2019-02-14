@@ -9,7 +9,7 @@ class UserMap(
         val id: Int = 1,
         val name: String = "vswer",
         val date: Date = Date(),
-        val list: List<String>? = null,
+        val list: List<CarDto>? = null,
         @IgnoreMap val ignore: Int = 123
 ) {
 }

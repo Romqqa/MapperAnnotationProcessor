@@ -13,6 +13,6 @@ data class User(
         val id: Int = 12,
         val name: String = "",
         val date:Date? = null,
-        val list:List<String> = listOf()
+        val list:List<Car> = listOf()
 ) : Parcelable {
 }
