@@ -3,8 +3,8 @@
 Use Gradle:
 ```
 dependencies {
-    implementation 'com.ivanovrb.mapper:mapper:1.1.4'
-    kapt 'com.ivanovrb.mapper:mapperCompiler:1.1.4'
+    implementation 'com.ivanovrb.mapper:mapper:1.1.8'
+    kapt 'com.ivanovrb.mapper:mapperCompiler:1.1.8'
 }
 ```
 ## Usage
