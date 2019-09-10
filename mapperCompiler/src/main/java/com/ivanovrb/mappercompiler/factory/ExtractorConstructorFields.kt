@@ -69,11 +69,11 @@ abstract class ExtractorConstructorFields(
 
         val typeVariable = variable.typeName
         val targetType = getTargetTypeOfVariable(variable)
-        val isSameType = typeVariable.asNonNullable().toString() == targetType?.asNonNullable().toString()
+        val isSameType = typeVariable.copy(nullable = false).toString() == targetType?.copy(nullable = false).toString()
 
         if (!typeVariable.isPrimitive()) {
             if (!isSameType) {
-                val mapperType = graphDependencies[typeVariable.asNonNullable().toString()]
+                val mapperType = graphDependencies[typeVariable.copy(nullable = false).toString()]
                 if (mapperType == null) {
                     val statement = generateStatementForUnknownTypeClass(variable, targetType)
                     resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to statement
@@ -81,14 +81,14 @@ abstract class ExtractorConstructorFields(
                     resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to generateStatementForNotPrimaryField(variable, mapperType)
                 }
             } else {
-                if (typeVariable.nullable && targetType?.nullable == false) {
+                if (typeVariable.isNullable && targetType?.isNullable == false) {
                     val statement = generateStatementForUnknownTypeClass(variable, targetType)
                     resultMap[variable.simpleName] = resultMap[variable.simpleName]!!.first to statement
                 }
             }
         }
 
-        if (typeVariable.isPrimitive() && variable.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null && targetType?.nullable == false) {
+        if (typeVariable.isPrimitive() && variable.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null && targetType?.isNullable == false) {
 
             var defValueAnnotation: AnnotationMirror? = null
             variable.annotationMirrors.forEachIndexed { index, annotationMirror ->
@@ -99,7 +99,7 @@ abstract class ExtractorConstructorFields(
             }
 
             val defValue = if (defValueAnnotation == null) {
-                MapperUtils.getDefValue(typeVariable.asNonNullable().toString()).toString()
+                MapperUtils.getDefValue(typeVariable.copy(nullable = false).toString()).toString()
             } else {
                 if (typeVariable.toString() == String::class.java.canonicalName)
                     "\"${defValueAnnotation?.elementValues?.filterKeys { "value" == it.simpleName.toString() }?.mapValues { it.value.value as String }}\""
@@ -131,13 +131,13 @@ abstract class ExtractorConstructorFields(
                     "${variable.simpleName}.map { it.${generateStatementForNotPrimaryField(Parameter(type.toString(), type, listOf()), targetType.toString())?.split('.')?.last()} }"
                 else
                     "${variable.simpleName}?.map { it.${generateStatementForNotPrimaryField(Parameter(type.toString(), type, listOf()), targetType.toString())?.split('.')?.last()} } ?: ${mappingType?.getStubCollection()
-                            ?: mappingType?.asNonNullable()}()"
+                            ?: mappingType?.copy(nullable = false)}()"
 
             }
 
         }
         return "${variable.simpleName} ?: ${variable.typeName.getStubCollection()
-                ?: variable.typeName.asNonNullable()}()"
+                ?: variable.typeName.copy(nullable = false)}()"
     }
 
     private fun generateStatementForNotPrimaryField(variable: Parameter, mapperType: String): String? {
@@ -147,7 +147,7 @@ abstract class ExtractorConstructorFields(
             val defaultAnnotation: AnnotationMirror? = variable.annotationMirrors.firstOrNull { DEFAULT_CLASS_NAME == it.annotationType.toString() }
 
             "(${variable.simpleName} ?: ${defaultAnnotation?.elementValues?.filterKeys { "value" == it.simpleName.toString() }?.mapValues { it.value.value as kotlin.String }?.toList()?.firstOrNull()?.second
-                    ?: variable.typeName.asNonNullable().toString()}()).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
+                    ?: variable.typeName.copy(nullable = false).toString()}()).mapTo${ClassName.bestGuess(mapperType).simpleName}()"
         }
     }
 
@@ -177,7 +177,7 @@ abstract class ExtractorConstructorFields(
                                     }
                                     .map {
                                         val isNullable = it.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null
-                                        Parameter(it.simpleName.toString(), if (isNullable) it.asType().asTypeName().asNullable() else it.asType().asTypeName(), it.annotationMirrors)
+                                        Parameter(it.simpleName.toString(), if (isNullable) it.asType().asTypeName().copy(nullable = true) else it.asType().asTypeName(), it.annotationMirrors)
                                     }
                                     .toList(),
                             executableElement.annotationMirrors)

@@ -2,10 +2,7 @@ package com.ivanovrb.mappercompiler
 
 import com.ivanovrb.mappercompiler.factory.ExtractorConstructorFieldsFromClassInPackage
 import com.ivanovrb.mappercompiler.factory.ExtractorConstructorFieldsFromClassOutPackage
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.asTypeName
+import com.squareup.kotlinpoet.*
 import javax.annotation.processing.AbstractProcessor
 import javax.annotation.processing.RoundEnvironment
 import javax.lang.model.SourceVersion

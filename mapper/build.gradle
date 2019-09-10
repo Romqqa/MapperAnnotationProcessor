@@ -11,7 +11,7 @@ ext {
 
     publishedGroupId = 'com.ivanovrb.mapper'
     artifact = 'mapper'
-    libraryVersion = '1.1.1'
+    libraryVersion = '1.1.8'
 
     libraryDescription = 'Mapping your modules'
     siteUrl = 'https://github.com/Romqqa/MapperAnnotationProcessor'
@@ -22,6 +22,11 @@ ext {
     licenseName = 'The Apache Software License, Version 2.0'
     licenseUrl = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
     allLicenses = ["Apache-2.0"]
+    Properties properties = new Properties()
+    properties.load(project.rootProject.file('local.properties').newDataInputStream())
+
+    bintrayUsername = properties.getProperty('bintray.apikey')
+    bintrayApiKey = properties.getProperty('bintray.user')
 }
 
 dependencies {
@@ -32,7 +37,7 @@ dependencies {
 sourceCompatibility = "7"
 targetCompatibility = "7"
 
-//if (project.rootProject.file('local.properties').exists()) {
-//    apply from: 'https://raw.githubusercontent.com/nuuneoi/JCenter/master/installv1.gradle'
-//    apply from: 'https://raw.githubusercontent.com/nuuneoi/JCenter/master/bintrayv1.gradle'
-//}
+if (project.rootProject.file('local.properties').exists()) {
+    apply from: 'https://raw.githubusercontent.com/nuuneoi/JCenter/master/installv1.gradle'
+    apply from: 'https://raw.githubusercontent.com/nuuneoi/JCenter/master/bintrayv1.gradle'
+}

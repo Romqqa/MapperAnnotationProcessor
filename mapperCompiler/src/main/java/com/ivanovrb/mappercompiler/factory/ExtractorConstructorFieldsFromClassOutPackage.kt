@@ -29,7 +29,7 @@ class ExtractorConstructorFieldsFromClassOutPackage(
                     Constructor(
                             constructorsAsElement[index].parameters.mapIndexed { indexParameter, parameter ->
                                 val isNullable = parameter.annotationMirrors.firstOrNull { Nullable::class.qualifiedName == it.annotationType.toString() } != null
-                                Parameter(kFunction.parameters[indexParameter].name!!, if (isNullable) parameter.typeName.asNullable() else parameter.typeName, parameter.annotationMirrors, parameter.simpleName)
+                                Parameter(kFunction.parameters[indexParameter].name!!, if (isNullable) parameter.typeName.copy(nullable = true) else parameter.typeName, parameter.annotationMirrors, parameter.simpleName)
                             },
                             constructorsAsElement[index].annotationMirrors)
                 }

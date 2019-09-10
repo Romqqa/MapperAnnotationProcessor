@@ -3,7 +3,6 @@ package com.ivanovrb.mappercompiler
 import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.asTypeName
-import com.sun.org.apache.xpath.internal.operations.Bool
 
 const val MAPPER_CLASS_NAME = "com.ivanovrb.mapper.Mapper"
 const val IGNORE_MAP_CLASS_NAME = "com.ivanovrb.mapper.IgnoreMap"
@@ -70,10 +69,10 @@ object MapperUtils {
 }
 
 fun TypeName.isPrimitive(): Boolean {
-    return wrapperTypesKotlin[this.asNonNullable().toString()] != null || wrapperTypesJava[this.asNonNullable().toString()] != null
+    return wrapperTypesKotlin[this.toString()] != null || wrapperTypesJava[this.copy(nullable = false).toString()] != null
 }
 fun TypeName.isCollection(): Boolean {
-    val collection = collections[this.asNonNullable().toString().substringBefore("<")]
+    val collection = collections[this.copy(nullable = false).toString().substringBefore("<")]
     if(this is ParameterizedTypeName){
         return collections[this.rawType.canonicalName] != null || collections[this.rawType.canonicalName] != null
     }
@@ -82,14 +81,14 @@ fun TypeName.isCollection(): Boolean {
 
 fun TypeName.asKotlinPrimitive(): TypeName? {
     return when {
-        wrapperTypesKotlin[this.asNonNullable().toString()] != null -> return this
-        wrapperTypesJava[this.asNonNullable().toString()] != null -> return wrapperTypesJavaToKotlin[this.asNonNullable().toString()]!!
+        wrapperTypesKotlin[this.copy(nullable = false).toString()] != null -> return this
+        wrapperTypesJava[this.copy(nullable = false).toString()] != null -> return wrapperTypesJavaToKotlin[this.copy(nullable = false).toString()]!!
         else -> null
     }
 }
 
 fun TypeName.getStubCollection(): String? {
-    val collection = collections[this.asNonNullable().toString().substringBefore("<")]
+    val collection = collections[this.copy(nullable = false).toString().substringBefore("<")]
     if (collection != null && this is ParameterizedTypeName) {
         val types = this.typeArguments.map { it.asKotlinPrimitive() ?: it }.toString()
         return collection.replace("()", "<${types.substring(1, types.length - 1)}>")
